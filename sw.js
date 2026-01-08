@@ -17,3 +17,4 @@ self.addEventListener("fetch", (e) => {
   if (url.origin !== location.origin) return;
   e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request)));
 });
+

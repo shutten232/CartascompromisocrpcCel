@@ -80,6 +80,7 @@
         <label class="pill" title="Ajuste global en mm">Y <input id="offY" type="number" step="0.5" value="0"/></label>
         <button class="primary" type="button" onclick="generarPDF()">Generar PDF</button>
         <button class="primary" type="button" onclick="generarYEnviarWhatsApp()">Enviar por WhatsApp</button>
+        <button type="button" onclick="resetForm()">Resetear</button>
       </div>
     </div>
   </div>
@@ -368,6 +369,40 @@
       alert("Error al enviar por WhatsApp: " + (err?.message || err));
     }
   }
+  function resetForm(){
+  // limpia inputs/textarea/select
+  document.querySelectorAll('input, textarea, select').forEach(el=>{
+    const id = el.id || "";
+    const type = (el.type || "").toLowerCase();
+
+    if(type === "button" || type === "submit") return;
+
+    if(type === "checkbox" || type === "radio"){ el.checked = false; return; }
+
+    if(id === "offX" || id === "offY"){ el.value = 0; return; }
+
+    if(type === "date"){
+      const d = new Date();
+      const yyyy=d.getFullYear(), mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
+      el.value = `${yyyy}-${mm}-${dd}`;
+      return;
+    }
+
+    el.value = "";
+  });
+
+  // tabla: vacía y deja 2 filas nuevas
+  const tb = document.getElementById("tbody");
+  if(tb){
+    tb.innerHTML = "";
+    addRow(); addRow();
+  }
+
+  // apaga debug si existe
+  const dbg = document.getElementById("debug");
+  if(dbg) dbg.checked = false;
+}
+
 </script>
 </body>
 </html>
