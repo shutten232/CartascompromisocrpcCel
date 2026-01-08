@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Cartas Marcos · Carta Compromiso (A4)</title>
+  <title>Cartas Compromiso · Quiroga GNC</title>
+
+  <meta name="theme-color" content="#0b0f14"/>
+  <link rel="manifest" href="./manifest.json"/>
 
   <style>
     :root{--bg:#0b0f14;--card:#0f1621;--text:#eaf0ff;--muted:rgba(234,240,255,.75);--line:rgba(234,240,255,.14);--accent:#ffc107;--r:16px}
@@ -42,19 +45,22 @@
       width: 100%;
       min-width: 120px;
     }
-    tbody td:nth-child(2) input{ min-width: 220px; }
+    tbody td:nth-child(2) input{ min-width: 220px; } /* Serie cilindro más grande */
+
+    .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .actions button{flex:1}
 
     @media (max-width: 560px){
       .wrap{padding:10px}
       h1{font-size:16px}
-      input, textarea{font-size:16px}
+      input, textarea{font-size:16px} /* evita zoom */
       .pill input{width:70px}
-      .primary{width:100%}
-      .top{gap:10px}
+      .top{gap:10px;flex-direction:column;align-items:stretch}
+      .actions{width:100%}
     }
   </style>
 
-  <!-- Si NO tenés internet, bajá este archivo y usá: <script src="./jspdf.umd.min.js"></script> -->
+  <!-- Si no tenés internet: bajá jspdf.umd.min.js y reemplazá por <script src="./jspdf.umd.min.js"></script> -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body>
@@ -62,20 +68,33 @@
   <div class="card">
     <div class="top">
       <div>
-        <h1>Cartas Marcos · Carta Compromiso (A4)</h1>
-        <p class="sub">Plantilla local: <b>template.png</b> en la misma carpeta. Abrir con Live Server.</p>
+        <h1>Cartas Compromiso · Quiroga GNC</h1>
+        <p class="sub">
+          1) Cargar datos · 2) Generar PDF · 3) Enviar por WhatsApp (Compartir).<br>
+          Plantilla: podés usar <b>template.png</b> en la carpeta o elegir una imagen acá.
+        </p>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <label class="pill">X <input id="offX" type="number" step="0.5" value="0"/></label>
-        <label class="pill">Y <input id="offY" type="number" step="0.5" value="0"/></label>
-        <label class="pill">Prueba <input id="debug" type="checkbox"/></label>
-        <button class="primary" type="button" onclick="generarPDF()">Generar PDF A4</button>
+
+      <div class="actions">
+        <label class="pill" title="Ajuste global en mm">X <input id="offX" type="number" step="0.5" value="0"/></label>
+        <label class="pill" title="Ajuste global en mm">Y <input id="offY" type="number" step="0.5" value="0"/></label>
+        <button class="primary" type="button" onclick="generarPDF()">Generar PDF</button>
+        <button class="primary" type="button" onclick="generarYEnviarWhatsApp()">Enviar por WhatsApp</button>
       </div>
     </div>
   </div>
 
   <div class="card" style="margin-top:12px">
     <div class="content">
+      <div class="row">
+        <label style="grid-column:span 12">Plantilla (imagen de la carta)
+          <input id="bgFile" type="file" accept="image/png,image/jpeg"/>
+        </label>
+        <p class="hint" style="grid-column:span 12;margin:0">
+          Si no seleccionás archivo, intenta usar <b>./template.png</b> automáticamente.
+        </p>
+      </div>
+
       <div class="row">
         <label style="grid-column:span 6">Lugar <input id="lugar" value="Córdoba"/></label>
         <label style="grid-column:span 6">Fecha <input id="fecha" type="date"/></label>
@@ -109,7 +128,7 @@
       <div class="sep"></div>
 
       <div class="row">
-        <label style="grid-column:span 12; color:rgba(234,240,255,.92)">Tabla cilindro / válvula</label>
+        <label style="grid-column:span 12; color:rgba(234,240,255,.92)">Tabla cilindro / válvula (sin litros)</label>
         <div style="grid-column:span 12; overflow:auto">
           <table>
             <thead>
@@ -142,13 +161,27 @@
         <label style="grid-column:span 3">Domicilio <input id="tdmDom" placeholder=""/></label>
       </div>
 
-      <p class="hint">Si no genera: F12 → Console. Si dice “No cargó jsPDF”, bajá el archivo y ponelo local.</p>
+      <p class="hint">
+        Instalación en celular: Chrome → ⋮ → <b>“Agregar a pantalla principal”</b>.
+        Funciona en <b>https</b> o <b>localhost</b>.
+      </p>
     </div>
   </div>
 </div>
 
 <script>
+  // Si querés abrir WhatsApp directo a un número: poné 549351XXXXXXXX (sin +). Si queda vacío, abre selector.
+  const WHATSAPP_NUM = "";
+
   const BG_URL = "./template.png";
+  let BG_DATAURL = null;
+
+  // PWA
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(()=>{});
+    });
+  }
 
   (function init(){
     const f = document.getElementById('fecha');
@@ -157,6 +190,17 @@
     f.value = `${yyyy}-${mm}-${dd}`;
     addRow(); addRow();
   })();
+
+  document.getElementById("bgFile").addEventListener("change", async (e)=>{
+    const f = e.target.files?.[0];
+    if(!f){ BG_DATAURL = null; return; }
+    BG_DATAURL = await new Promise((resolve, reject)=>{
+      const r = new FileReader();
+      r.onload = ()=>resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(f);
+    });
+  });
 
   function addRow(){
     const tr = document.createElement('tr');
@@ -195,9 +239,8 @@
     return `${d}/${m}/${y}`;
   }
 
-  // CARGA DE IMAGEN (ROBUSTA): fetch -> blob -> dataURL
   async function loadImageAsDataURL(url){
-    const res = await fetch(url);
+    const res = await fetch(url, {cache:"no-store"});
     if(!res.ok) throw new Error(`No se pudo cargar ${url} (HTTP ${res.status})`);
     const blob = await res.blob();
     return await new Promise((resolve, reject)=>{
@@ -208,80 +251,121 @@
     });
   }
 
+  function saveBlob(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+  }
+
+  async function buildPDF(){
+    if(!window.jspdf || !window.jspdf.jsPDF){
+      throw new Error("No cargó jsPDF. Si estás sin internet, usá jsPDF local.");
+    }
+
+    const offX = parseFloat(document.getElementById('offX').value||0) || 0;
+    const offY = parseFloat(document.getElementById('offY').value||0) || 0;
+
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({unit:'mm', format:'a4'});
+
+    const bgDataUrl = BG_DATAURL || await loadImageAsDataURL(BG_URL);
+    doc.addImage(bgDataUrl, "PNG", 0, 0, 210, 297);
+
+    const X = (x)=>x+offX;
+    const Y = (y)=>y+offY;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+
+    const lugar = (document.getElementById('lugar').value||'').trim() || 'Córdoba';
+    const fechaISO = (document.getElementById('fecha').value||'');
+    const fecha = fmtFecha(fechaISO);
+
+    doc.setFontSize(12);
+    doc.text(`${lugar}, ${fecha}`, X(137), Y(63.3));
+
+    doc.setFontSize(10);
+    doc.text((document.getElementById('prop').value||'').trim(), X(57), Y(165.0));
+    doc.text((document.getElementById('dni').value||'').trim(), X(135), Y(165.0));
+    doc.text((document.getElementById('tel').value||'').trim(), X(168), Y(165.0));
+
+    doc.setFontSize(9.5);
+    doc.text((document.getElementById('calle').value||'').trim(), X(52), Y(173.0));
+    doc.text((document.getElementById('num').value||'').trim(), X(124.5), Y(173.0));
+    doc.text((document.getElementById('piso').value||'').trim(), X(150.5), Y(174.0));
+    doc.text((document.getElementById('dpto').value||'').trim(), X(172.5), Y(174.0));
+    doc.text((document.getElementById('cp').value||'').trim(), X(194.0), Y(174.0));
+
+    doc.text((document.getElementById('loc').value||'').trim(), X(41), Y(182.8));
+    doc.text((document.getElementById('dom').value||'').trim(), X(172), Y(181.8));
+
+    doc.setFontSize(9.5);
+    doc.text((document.getElementById('tdmNombre').value||'').trim(), X(32), Y(197.0));
+    doc.text((document.getElementById('tdmCodigo').value||'').trim(), X(45), Y(201.0));
+    doc.text((document.getElementById('tdmDom').value||'').trim(), X(37), Y(206.0));
+
+    doc.setFontSize(9);
+    const obsGen = (document.getElementById('obsGeneral').value||'').trim();
+
+    const col = { cod:22.0, serieC:48.0, fechaF:105.0, marcaV:120.0, modelo:140.0, serieV:158.0, obs:176.0 };
+    let y0 = 128.2;
+    const dy = 7.3;
+
+    const rs = rows();
+    rs.forEach((r,i)=>{
+      const y = y0 + i*dy;
+      doc.text((r[0]||''), X(col.cod), Y(y));
+      doc.text((r[1]||''), X(col.serieC), Y(y));
+      doc.text((r[2]||''), X(col.fechaF), Y(y));
+      doc.text((r[3]||''), X(col.marcaV), Y(y));
+      doc.text((r[4]||''), X(col.modelo), Y(y));
+      doc.text((r[5]||''), X(col.serieV), Y(y));
+      doc.text((r[6]||obsGen||''), X(col.obs), Y(y), {maxWidth: 32});
+    });
+
+    const prop = ((document.getElementById('prop').value||'cliente').trim() || 'cliente');
+    const safe = prop.replace(/[^a-z0-9\s_-]/gi,'').trim().slice(0,40) || 'cliente';
+    const filename = `carta_compromiso_${safe}_${fechaISO.replaceAll('-','')}.pdf`;
+    const msg = `Carta compromiso - ${prop} - ${fecha}`;
+
+    const blob = doc.output("blob");
+    return {blob, filename, msg};
+  }
+
   async function generarPDF(){
     try{
-      if(!window.jspdf || !window.jspdf.jsPDF){
-        alert("No cargó jsPDF (CDN bloqueado o sin internet). Bajá jspdf.umd.min.js y linkealo local.");
-        return;
-      }
-
-      const offX = parseFloat(document.getElementById('offX').value||0) || 0;
-      const offY = parseFloat(document.getElementById('offY').value||0) || 0;
-
-      const {jsPDF} = window.jspdf;
-      const doc = new jsPDF({unit:'mm', format:'a4'});
-
-      const bgDataUrl = await loadImageAsDataURL(BG_URL);
-      doc.addImage(bgDataUrl, "PNG", 0, 0, 210, 297);
-
-      const X = (x)=>x+offX;
-      const Y = (y)=>y+offY;
-
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-
-      const lugar = (document.getElementById('lugar').value||'').trim() || 'Córdoba';
-      const fecha = fmtFecha(document.getElementById('fecha').value);
-
-      doc.setFontSize(12);
-      doc.text(`${lugar}, ${fecha}`, X(137), Y(63.3));
-
-      doc.setFontSize(10);
-      doc.text((document.getElementById('prop').value||'').trim(), X(57), Y(165.0));
-      doc.text((document.getElementById('dni').value||'').trim(), X(135), Y(165.0));
-      doc.text((document.getElementById('tel').value||'').trim(), X(168), Y(165.0));
-
-      doc.setFontSize(9.5);
-      doc.text((document.getElementById('calle').value||'').trim(), X(52), Y(173.0));
-      doc.text((document.getElementById('num').value||'').trim(), X(124.5), Y(173.0));
-      doc.text((document.getElementById('piso').value||'').trim(), X(150.5), Y(174.0));
-      doc.text((document.getElementById('dpto').value||'').trim(), X(172.5), Y(174.0));
-      doc.text((document.getElementById('cp').value||'').trim(), X(194.0), Y(174.0));
-
-      doc.text((document.getElementById('loc').value||'').trim(), X(41), Y(182.8));
-      doc.text((document.getElementById('dom').value||'').trim(), X(172), Y(181.8));
-
-      doc.text((document.getElementById('tdmNombre').value||'').trim(), X(32), Y(197.0));
-      doc.text((document.getElementById('tdmCodigo').value||'').trim(), X(45), Y(201.0));
-      doc.text((document.getElementById('tdmDom').value||'').trim(), X(37), Y(206.0));
-
-      doc.setFontSize(9);
-
-      const obsGen = (document.getElementById('obsGeneral').value||'').trim();
-      const col = { cod:22.0, serieC:48.0, fechaF:105.0, marcaV:120.0, modelo:140.0, serieV:158.0, obs:176.0 };
-      let y0 = 128.2;
-      const dy = 7.3;
-
-      const rs = rows();
-      rs.forEach((r,i)=>{
-        const y = y0 + i*dy;
-        doc.text((r[0]||''), X(col.cod), Y(y));
-        doc.text((r[1]||''), X(col.serieC), Y(y));
-        doc.text((r[2]||''), X(col.fechaF), Y(y));
-        doc.text((r[3]||''), X(col.marcaV), Y(y));
-        doc.text((r[4]||''), X(col.modelo), Y(y));
-        doc.text((r[5]||''), X(col.serieV), Y(y));
-        doc.text((r[6]||obsGen||''), X(col.obs), Y(y), {maxWidth: 32});
-      });
-
-      const safe = ((document.getElementById('prop').value||'cliente').trim() || 'cliente')
-        .replace(/[^a-z0-9\\s_-]/gi,'').trim().slice(0,40) || 'cliente';
-
-      doc.save(`carta_compromiso_${safe}_${(document.getElementById('fecha').value||'').replaceAll('-','')}.pdf`);
-
+      const {blob, filename} = await buildPDF();
+      saveBlob(blob, filename);
     }catch(err){
       console.error(err);
       alert("Error al generar PDF: " + (err?.message || err));
+    }
+  }
+
+  async function generarYEnviarWhatsApp(){
+    try{
+      const {blob, filename, msg} = await buildPDF();
+      const file = new File([blob], filename, { type: "application/pdf" });
+
+      // Celular: comparte con WhatsApp y adjunta el PDF.
+      if(navigator.canShare && navigator.canShare({ files: [file] })){
+        await navigator.share({ title: "Carta Compromiso", text: msg, files: [file] });
+        return;
+      }
+
+      // PC / celular sin share de archivos: descarga y abre WhatsApp con texto (adjuntas manual).
+      saveBlob(blob, filename);
+      const base = WHATSAPP_NUM ? `https://wa.me/${WHATSAPP_NUM}` : "https://wa.me/";
+      window.open(base + "?text=" + encodeURIComponent(msg), "_blank");
+
+    }catch(err){
+      console.error(err);
+      alert("Error al enviar por WhatsApp: " + (err?.message || err));
     }
   }
 </script>
